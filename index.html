@@ -155,6 +155,41 @@
       letter-spacing: 0.06em;
     }
 
+    .line.member-slot.tappable {
+      cursor: pointer;
+      padding: 12px 8px;
+      margin: 6px 0;
+      border: 1px solid var(--text-dim);
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    .line.member-slot.tappable:active {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: var(--text-bright);
+    }
+
+    .line.mobile-back-btn {
+      cursor: pointer;
+      margin: 20px 0 8px;
+      padding: 14px 8px;
+      text-align: center;
+      border: 1px dashed var(--text-dim);
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    .line.mobile-back-btn:active {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: var(--text-bright);
+    }
+
+    #boot-screen.is-tappable,
+    #thank-you-screen.is-tappable {
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
     .line.member-slot.viewed {
       color: var(--text-dim);
     }
@@ -354,9 +389,18 @@
       #output, #input-row { font-size: 1.25rem; line-height: 1.7; }
     }
 
-    @media (max-width: 480px) {
-      .terminal-header { margin-bottom: 8px; }
-      #output { line-height: 1.5; }
+    @media (max-width: 768px) {
+      #input-row {
+        display: none !important;
+      }
+
+      #boot-hint,
+      #thank-you-hint {
+        font-size: clamp(0.75rem, 3.5vw, 0.95rem);
+        letter-spacing: 0.06em;
+        text-align: center;
+        padding: 0 12px;
+      }
     }
   </style>
 </head>
@@ -365,7 +409,7 @@
   <!-- 階段 1：BOOT → 階段 2：CHOOSE MEMBER -->
   <div id="boot-screen">
     <div id="boot-content"></div>
-    <div id="boot-hint" style="display:none;">Press ENTER</div>
+    <div id="boot-hint" style="display:none;"></div>
   </div>
 
   <!-- CHOOSE MEMBER -->
@@ -424,24 +468,40 @@
         name: "吳雨臻",
         department: "資訊處",
         major: "資訊安全部",
+        interest: "玩皮克敏",
+        favoriteMedia: "火影忍者",
+        birthYearSong: "Coldplay-yellow",
+        hashtags: "#睡覺#吃飯#摸摸小狗",
         photo: "images/oliver.png"
       },
       member2: {
         name: "李知諭",
         department: "資訊營運部",
         major: "輔大醫資學程",
+        interest: "看影片、佛系追星、跟小狗玩～",
+        favoriteMedia: "苦盡甘來遇見你🍊",
+        birthYearSong: "愛你-王心凌（2004）",
+        hashtags: "#快樂冒險家 #哪裡有活動哪裡就有我 #世界這麼大我都要看過一遍！",
         photo: "images/member2.png"
       },
       member3: {
         name: "李東璟",
         department: "人力資源部",
         major: "師大科技應用與人資系",
+        interest: "旅遊、鐵道、攝影、看海&夕陽",
+        favoriteMedia: "我的少女時代",
+        birthYearSong: "寧夏-梁靜茹（2004）",
+        hashtags: "#鄉下小孩 #笑點很低 #沒有要當老師",
         photo: "images/member3.png"
       },
       member4: {
         name: "劉應侑",
         department: "數位發展部",
         major: "中央財金所",
+        interest: "足球、研究台股、打遊戲",
+        favoriteMedia: "楚門的世界",
+        birthYearSong: "太聰明-陳綺貞（2002）",
+        hashtags: "#阿根廷世界冠軍 🇦🇷\n#多頭的終點台股十萬點😍\n#要每天早睡早起",
         photo: "images/member4.png"
       }
     };
@@ -450,7 +510,11 @@
     const PROFILE_FIELDS = [
       { key: "name", label: "姓名" },
       { key: "department", label: "部門" },
-      { key: "major", label: "科系" }
+      { key: "major", label: "科系" },
+      { key: "interest", label: "興趣" },
+      { key: "favoriteMedia", label: "喜歡的電影或電視劇" },
+      { key: "birthYearSong", label: "我出生那年的歌曲" },
+      { key: "hashtags", label: "給自己三個" }
     ];
 
     /* ===== 流程階段 ===== */
@@ -481,6 +545,7 @@
     let bootReady = false;
     let thankYouReady = false;
     let thankYouShown = false;
+    let bootTransitioning = false;
     let viewedProfiles = new Set();
     let progressEl = null;
     let memberSlotEls = [];
@@ -491,6 +556,16 @@
     const FAST_LINE_DELAY = 30;
 
     const MEMBER_KEYS = ["member1", "member2", "member3", "member4"];
+    const TOTAL_MEMBERS = MEMBER_KEYS.length;
+
+    // 手機 / 觸控裝置判斷
+    const isMobile =
+      window.matchMedia("(max-width: 768px), (pointer: coarse)").matches ||
+      "ontouchstart" in window;
+
+    const HINT_CONTINUE = isMobile
+      ? "TAP ANYWHERE TO CONTINUE"
+      : "Press ENTER";
 
     /* ===== 工具函式 ===== */
     function delay(ms) {
@@ -506,7 +581,25 @@
     }
 
     function showInputRow(show) {
+      if (isMobile) {
+        inputRow.style.display = "none";
+        return;
+      }
       inputRow.style.display = show ? "flex" : "none";
+    }
+
+    function setupContinueHints() {
+      bootHint.textContent = HINT_CONTINUE;
+      thankYouHint.textContent = HINT_CONTINUE;
+    }
+
+    /** 手機模式：隱藏鍵盤輸入，全程用點擊操作 */
+    function setupMobileMode() {
+      if (!isMobile) return;
+      commandInput.setAttribute("readonly", "true");
+      commandInput.setAttribute("inputmode", "none");
+      commandInput.setAttribute("tabindex", "-1");
+      commandInput.blur();
     }
 
     function showGlobalProgress(show) {
@@ -514,7 +607,7 @@
     }
 
     /** 產生進度條文字：████████░░ 80% */
-    function buildProgressView(count, total = 4) {
+    function buildProgressView(count, total = TOTAL_MEMBERS) {
       const pct = Math.round((count / total) * 100);
       const filled = Math.round((count / total) * 10);
       const bar = "█".repeat(filled) + "░".repeat(10 - filled);
@@ -623,10 +716,9 @@
 
     /** 依 MEMBERS 內有填的欄位組出 profile 文字行 */
     function buildProfileLines(m) {
-      return PROFILE_FIELDS.map(({ key, label }) => {
-        const value = m[key] || "—";
-        return `${label}：${value}`;
-      });
+      return PROFILE_FIELDS
+        .filter(({ key }) => m[key])
+        .map(({ key, label }) => `${label}：${m[key]}`);
     }
 
     /** 建立 profile 版面：左側文字、右側 3:4 照片 */
@@ -684,11 +776,15 @@
       await delay(FAST_LINE_DELAY);
 
       bootHint.style.display = "block";
+      bootScreen.classList.add("is-tappable");
       bootReady = true;
     }
 
     async function finishBooting() {
-      if (!bootReady || currentPhase !== PHASE.BOOTING) return;
+      if (!bootReady || currentPhase !== PHASE.BOOTING || bootTransitioning) return;
+      bootTransitioning = true;
+      bootReady = false;
+      bootScreen.classList.remove("is-tappable");
 
       bootScreen.style.opacity = "0";
       bootScreen.style.transition = "opacity 0.5s ease";
@@ -698,6 +794,7 @@
       terminal.style.visibility = "visible";
       currentPhase = PHASE.CHOOSE;
       await runChoosePhase();
+      bootTransitioning = false;
     }
 
     /* ============================================================
@@ -730,7 +827,7 @@
       emptyEl.innerHTML = "&nbsp;";
       output.appendChild(emptyEl);
 
-      // 成員選項列表（顯示編號 + 姓名）
+      // 成員選項列表（顯示編號 + 姓名；手機可點擊）
       for (let i = 0; i < MEMBER_KEYS.length; i++) {
         const m = MEMBERS[MEMBER_KEYS[i]];
         const num = String(i + 1).padStart(2, "0");
@@ -738,6 +835,7 @@
         slotEl.className = "line member-slot";
         if (viewedProfiles.has(MEMBER_KEYS[i])) slotEl.classList.add("viewed");
         slotEl.textContent = `[ Member ${num} ]  ${m.name}`;
+        if (isMobile) bindMemberSlot(slotEl, i);
         output.appendChild(slotEl);
         memberSlotEls.push(slotEl);
         scrollToBottom();
@@ -746,14 +844,78 @@
 
       await typeLines([
         "",
-        "Enter 1, 2, 3, or 4 to view profile.",
+        isMobile
+          ? "Tap a member above to view profile."
+          : "Enter 1, 2, 3, or 4 to view profile.",
         ""
       ], "line dim", FAST_TYPING_SPEED, FAST_LINE_DELAY);
 
       showInputRow(true);
-      commandInput.disabled = false;
-      commandInput.value = "";
-      commandInput.focus();
+      if (!isMobile) {
+        commandInput.disabled = false;
+        commandInput.value = "";
+        commandInput.focus();
+      }
+    }
+
+    /** 手機版：綁定成員列點擊 */
+    function bindMemberSlot(slotEl, index) {
+      slotEl.classList.add("tappable");
+      slotEl.setAttribute("role", "button");
+      slotEl.setAttribute("tabindex", "0");
+
+      const activate = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (currentPhase !== PHASE.CHOOSE || isTyping || thankYouReady) return;
+        await openMemberProfile(MEMBER_KEYS[index], String(index + 1));
+      };
+
+      slotEl.addEventListener("click", activate);
+      slotEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") activate(e);
+      });
+    }
+
+    /** 手機版：profile 下方返回選單按鈕 */
+    function appendMobileBackButton() {
+      if (!isMobile) return;
+
+      const btn = document.createElement("div");
+      btn.className = "line mobile-back-btn bright";
+      btn.textContent = "[ ← Back to menu ]";
+      btn.setAttribute("role", "button");
+      btn.setAttribute("tabindex", "0");
+
+      const goBack = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (isTyping || thankYouReady) return;
+        await runChoosePhase();
+      };
+
+      btn.addEventListener("click", goBack);
+      btn.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") goBack(e);
+      });
+
+      output.appendChild(btn);
+      scrollToBottom();
+    }
+
+    /** 開啟成員 profile（點擊共用；鍵盤由 handleChooseInput 處理） */
+    async function openMemberProfile(key, inputLabel) {
+      if (isTyping || thankYouReady) return;
+
+      appendPromptLine(inputLabel);
+      commandInput.disabled = true;
+      await showMemberProfile(key);
+
+      if (!thankYouReady) {
+        commandInput.disabled = false;
+        commandInput.value = "";
+        if (!isMobile) commandInput.focus();
+      }
     }
 
     /**
@@ -782,16 +944,22 @@
         "",
         ...profileLines,
         "",
-        "Enter another number (1-4) or type \"back\" to menu."
+        isMobile
+          ? "Tap [← Back to menu] below or select another member."
+          : "Enter another number (1-4) or type \"back\" to menu."
       ], "line", TYPING_SPEED, LINE_DELAY, textCol);
+
+      appendMobileBackButton();
 
       if (!wasComplete && viewedProfiles.size >= 4) {
         await maybeShowThankYou();
       }
 
-      commandInput.disabled = false;
-      commandInput.value = "";
-      commandInput.focus();
+      if (!thankYouReady) {
+        commandInput.disabled = false;
+        commandInput.value = "";
+        if (!isMobile) commandInput.focus();
+      }
     }
 
     /**
@@ -856,12 +1024,14 @@
       }
 
       thankYouHint.style.display = "block";
+      thankYouScreen.classList.add("is-tappable");
       thankYouReady = true;
     }
 
     async function dismissThankYou() {
       if (!thankYouReady) return;
       thankYouReady = false;
+      thankYouScreen.classList.remove("is-tappable");
       thankYouScreen.style.opacity = "0";
       thankYouScreen.style.transition = "opacity 0.5s ease";
       await delay(500);
@@ -869,12 +1039,12 @@
       thankYouScreen.style.opacity = "1";
       thankYouHint.style.display = "none";
       commandInput.disabled = false;
-      commandInput.focus();
+      if (!isMobile) commandInput.focus();
     }
 
     async function handleChooseInput(raw) {
       const input = raw.trim();
-      if (!input || isTyping) return;
+      if (!input || isTyping || thankYouReady) return;
 
       appendPromptLine(input);
       commandInput.disabled = true;
@@ -888,21 +1058,42 @@
 
       if (result) {
         await showMemberProfile(result);
-      } else {
-        await typeLines([
-          "Invalid selection.",
-          "Please enter 1, 2, 3, 4, or \"back\"."
-        ], "line error");
+        if (!thankYouReady) {
+          commandInput.disabled = false;
+          commandInput.value = "";
+          if (!isMobile) commandInput.focus();
+        }
+        return;
       }
+
+      await typeLines([
+        "Invalid selection.",
+        isMobile
+          ? "Tap a member from the menu above."
+          : "Please enter 1, 2, 3, 4, or \"back\"."
+      ], "line error");
 
       commandInput.disabled = false;
       commandInput.value = "";
-      commandInput.focus();
+      if (!isMobile) commandInput.focus();
     }
 
     /* ===== 事件監聽 ===== */
 
-    // 全域 Enter：Boot 階段、Thank You 關閉
+    setupContinueHints();
+    setupMobileMode();
+
+    // Boot / Thank You：Enter（桌面）或點擊任意處（手機）
+    bootScreen.addEventListener("click", async () => {
+      if (bootReady && currentPhase === PHASE.BOOTING && !isTyping) {
+        await finishBooting();
+      }
+    });
+
+    thankYouScreen.addEventListener("click", async () => {
+      if (thankYouReady) await dismissThankYou();
+    });
+
     document.addEventListener("keydown", async (e) => {
       if (e.key !== "Enter" || isTyping) return;
 
@@ -918,19 +1109,21 @@
       }
     });
 
-    // Choose 階段：Enter 執行選擇
+    // Choose 階段：Enter 執行選擇（桌面）
     commandInput.addEventListener("keydown", async (e) => {
-      if (e.key === "Enter" && currentPhase === PHASE.CHOOSE && !isTyping) {
+      if (e.key === "Enter" && currentPhase === PHASE.CHOOSE && !isTyping && !isMobile) {
         e.preventDefault();
         await handleChooseInput(commandInput.value);
       }
     });
 
-    terminal.addEventListener("click", () => {
-      if (currentPhase === PHASE.CHOOSE && !commandInput.disabled) {
-        commandInput.focus();
-      }
-    });
+    if (!isMobile) {
+      terminal.addEventListener("click", () => {
+        if (currentPhase === PHASE.CHOOSE && !commandInput.disabled) {
+          commandInput.focus();
+        }
+      });
+    }
 
     commandInput.addEventListener("input", () => {
       if (isTyping) commandInput.value = commandInput.value.slice(0, -1);
