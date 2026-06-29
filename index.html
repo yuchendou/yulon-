@@ -123,6 +123,16 @@
     }
 
     .line.dim { color: var(--text-dim); }
+
+    /* 操作提示：藍色、較大字 */
+    .line.hint {
+      color: #5eb8ff;
+      font-size: clamp(1.05rem, 3vw, 1.35rem);
+      line-height: 1.75;
+      margin: 10px 0 6px;
+      text-shadow: 0 0 10px rgba(94, 184, 255, 0.35);
+    }
+
     .line.bright {
       color: var(--text-bright);
       text-shadow: 0 0 8px var(--glow);
@@ -253,6 +263,63 @@
       color: var(--text-dim);
       animation: pulse 2s ease-in-out infinite;
       font-size: clamp(0.8rem, 2vw, 1rem);
+    }
+
+    /* 自訂確認視窗（是 / 否） */
+    #confirm-screen {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.88);
+      z-index: 350;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      padding: 24px;
+    }
+
+    #confirm-box {
+      max-width: 480px;
+      width: 100%;
+      border: 1px solid var(--text-dim);
+      box-shadow: 0 0 24px var(--glow);
+      padding: clamp(20px, 5vw, 32px);
+      background: var(--bg);
+      text-align: center;
+    }
+
+    #confirm-message {
+      font-size: clamp(1rem, 3.2vw, 1.2rem);
+      line-height: 1.8;
+      color: var(--text-bright);
+      margin-bottom: 24px;
+    }
+
+    #confirm-actions {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+    }
+
+    .confirm-btn {
+      font-family: var(--font-mono);
+      font-size: clamp(0.95rem, 2.8vw, 1.1rem);
+      padding: 12px 28px;
+      border: 1px solid var(--text-dim);
+      background: transparent;
+      color: var(--text-bright);
+      cursor: pointer;
+      min-width: 88px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .confirm-btn:active {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--text-bright);
+    }
+
+    .confirm-btn.primary {
+      border-color: #5eb8ff;
+      color: #5eb8ff;
     }
 
     /* Profile 照片區塊（文字左、3:4 直式照片右） */
@@ -445,6 +512,17 @@
     </div>
   </div>
 
+  <!-- 四人都看完：確認視窗 -->
+  <div id="confirm-screen">
+    <div id="confirm-box">
+      <p id="confirm-message"></p>
+      <div id="confirm-actions">
+        <button type="button" class="confirm-btn primary" id="confirm-yes">是</button>
+        <button type="button" class="confirm-btn" id="confirm-no">否</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 四人都看完：Thank You -->
   <div id="thank-you-screen">
     <div id="thank-you-content"></div>
@@ -538,6 +616,10 @@
     const thankYouScreen = document.getElementById("thank-you-screen");
     const thankYouContent = document.getElementById("thank-you-content");
     const thankYouHint = document.getElementById("thank-you-hint");
+    const confirmScreen = document.getElementById("confirm-screen");
+    const confirmMessage = document.getElementById("confirm-message");
+    const confirmYes = document.getElementById("confirm-yes");
+    const confirmNo = document.getElementById("confirm-no");
 
     /* ===== 狀態 ===== */
     let currentPhase = PHASE.BOOTING;
@@ -842,13 +924,17 @@
         await delay(FAST_LINE_DELAY * 0.6);
       }
 
-      await typeLines([
-        "",
+      await typeLines([""], "line", FAST_TYPING_SPEED, FAST_LINE_DELAY);
+
+      await typeText(
         isMobile
-          ? "Tap a member above to view profile."
-          : "Enter 1, 2, 3, or 4 to view profile.",
-        ""
-      ], "line dim", FAST_TYPING_SPEED, FAST_LINE_DELAY);
+          ? "請點選上方成員查看資料。"
+          : "請輸入 1、2、3、4 查看成員資料。",
+        "line hint",
+        FAST_TYPING_SPEED
+      );
+
+      await typeLines([""], "line", FAST_TYPING_SPEED, FAST_LINE_DELAY);
 
       showInputRow(true);
       if (!isMobile) {
@@ -883,7 +969,7 @@
 
       const btn = document.createElement("div");
       btn.className = "line mobile-back-btn bright";
-      btn.textContent = "[ ← Back to menu ]";
+      btn.textContent = "[ ← 返回選單 ]";
       btn.setAttribute("role", "button");
       btn.setAttribute("tabindex", "0");
 
@@ -928,7 +1014,7 @@
 
       commandInput.disabled = true;
 
-      const wasComplete = viewedProfiles.size >= 4;
+      const wasComplete = viewedProfiles.size >= TOTAL_MEMBERS;
       viewedProfiles.add(key);
       updateProgressDisplay();
 
@@ -942,16 +1028,21 @@
         "",
         `── ${m.name} ──`,
         "",
-        ...profileLines,
-        "",
-        isMobile
-          ? "Tap [← Back to menu] below or select another member."
-          : "Enter another number (1-4) or type \"back\" to menu."
+        ...profileLines
       ], "line", TYPING_SPEED, LINE_DELAY, textCol);
+
+      await typeText(
+        isMobile
+          ? "請點選下方「返回選單」，或點選其他成員。"
+          : "請輸入其他編號，或輸入 back 返回選單。",
+        "line hint",
+        TYPING_SPEED,
+        textCol
+      );
 
       appendMobileBackButton();
 
-      if (!wasComplete && viewedProfiles.size >= 4) {
+      if (!wasComplete && viewedProfiles.size >= TOTAL_MEMBERS) {
         await maybeShowThankYou();
       }
 
@@ -978,13 +1069,50 @@
       return null;
     }
 
-    /** 四人都看完後顯示 Thank You */
-    async function maybeShowThankYou() {
-      if (thankYouShown || viewedProfiles.size < 4) return;
-      thankYouShown = true;
-      thankYouReady = false;
+    /** 自訂確認視窗，回傳 true（是）或 false（否） */
+    function showConfirmDialog(message) {
+      return new Promise((resolve) => {
+        confirmMessage.textContent = message;
+        confirmScreen.style.display = "flex";
 
-      await delay(400);
+        const finish = (result) => {
+          confirmScreen.style.display = "none";
+          confirmYes.removeEventListener("click", onYes);
+          confirmNo.removeEventListener("click", onNo);
+          resolve(result);
+        };
+
+        const onYes = () => finish(true);
+        const onNo = () => finish(false);
+
+        confirmYes.addEventListener("click", onYes);
+        confirmNo.addEventListener("click", onNo);
+      });
+    }
+
+    /** 四人都看完：停 5 秒後詢問是否結束觀看 */
+    async function maybeShowThankYou() {
+      if (thankYouShown || viewedProfiles.size < TOTAL_MEMBERS) return;
+
+      await delay(5000);
+
+      const wantEnd = await showConfirmDialog(
+        "您已經看完四位實習生的簡歷，要結束觀看嗎？"
+      );
+
+      if (wantEnd) {
+        thankYouShown = true;
+        await showThankYouScreen();
+        return;
+      }
+
+      viewedProfiles.clear();
+      updateProgressDisplay();
+      await runChoosePhase();
+    }
+
+    async function showThankYouScreen() {
+      thankYouReady = false;
       commandInput.disabled = true;
       thankYouScreen.style.display = "flex";
       thankYouContent.innerHTML = "";
@@ -1067,11 +1195,10 @@
       }
 
       await typeLines([
-        "Invalid selection.",
         isMobile
-          ? "Tap a member from the menu above."
-          : "Please enter 1, 2, 3, 4, or \"back\"."
-      ], "line error");
+          ? "請點選上方成員查看資料。"
+          : "輸入無效，請輸入 1、2、3、4 或 back。"
+      ], "line hint");
 
       commandInput.disabled = false;
       commandInput.value = "";
